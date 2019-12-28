@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from absl import app
 from absl import flags
 from absl import logging
@@ -253,6 +255,14 @@ def run(flags_obj):
       optimizer = tf.train.experimental.enable_mixed_precision_graph_rewrite(
           optimizer, loss_scale)
 
+    current_step = 0
+    checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
+    latest_checkpoint = tf.train.latest_checkpoint(flags_obj.model_dir)
+    if latest_checkpoint:
+      checkpoint.restore(latest_checkpoint)
+      logging.info("Load checkpoint %s", latest_checkpoint)
+      current_step = optimizer.iterations.numpy()
+
     train_loss = tf.keras.metrics.Mean('train_loss', dtype=tf.float32)
     training_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
         'training_accuracy', dtype=tf.float32)
@@ -274,13 +284,12 @@ def run(flags_obj):
         num_replicas = tf.distribute.get_strategy().num_replicas_in_sync
 
         if flags_obj.single_l2_loss_op:
-          filtered_variables = [
-              tf.reshape(v, (-1,))
+          l2_loss = resnet_model.L2_WEIGHT_DECAY * 2 * tf.add_n([
+              tf.nn.l2_loss(v)
               for v in trainable_variables
               if 'bn' not in v.name
-          ]
-          l2_loss = resnet_model.L2_WEIGHT_DECAY * 2 * tf.nn.l2_loss(
-              tf.concat(filtered_variables, axis=0))
+          ])
+
           loss += (l2_loss / num_replicas)
         else:
           loss += (tf.reduce_sum(model.losses) / num_replicas)
@@ -331,9 +340,14 @@ def run(flags_obj):
       train_single_step = tf.function(train_single_step)
       test_step = tf.function(test_step)
 
+    if flags_obj.enable_tensorboard:
+      summary_writer = tf.summary.create_file_writer(flags_obj.model_dir)
+    else:
+      summary_writer = None
+
     train_iter = iter(train_ds)
     time_callback.on_train_begin()
-    for epoch in range(train_epochs):
+    for epoch in range(current_step // per_epoch_steps, train_epochs):
       train_loss.reset_states()
       training_accuracy.reset_states()
 
@@ -371,7 +385,25 @@ def run(flags_obj):
                      test_accuracy.result().numpy(),
                      epoch + 1)
 
+      if flags_obj.enable_checkpoint_and_export:
+        checkpoint_name = checkpoint.save(
+            os.path.join(flags_obj.model_dir,
+                         'model.ckpt-{}'.format(epoch + 1)))
+        logging.info('Saved checkpoint to %s', checkpoint_name)
+
+      if summary_writer:
+        current_steps = steps_in_current_epoch + (epoch * per_epoch_steps)
+        with summary_writer.as_default():
+          tf.summary.scalar('train_loss', train_loss.result(), current_steps)
+          tf.summary.scalar(
+              'train_accuracy', training_accuracy.result(), current_steps)
+          tf.summary.scalar('eval_loss', test_loss.result(), current_steps)
+          tf.summary.scalar(
+              'eval_accuracy', test_accuracy.result(), current_steps)
+
     time_callback.on_train_end()
+    if summary_writer:
+      summary_writer.close()
 
     eval_result = None
     train_result = None

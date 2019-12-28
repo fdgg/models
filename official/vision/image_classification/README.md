@@ -19,9 +19,14 @@ uses a ResNet50 model implemented in [`resnet_model.py`](./resnet_model.py).
 To use
 either dataset, make sure that you have the latest version of TensorFlow
 installed and
-[add the models folder to your Python path](/official/#running-the-models),
-otherwise you may encounter an error like `ImportError: No module named
-official.resnet`.
+[add the models folder to your Python path](/official/#running-the-models).
+
+### Pretrained Models
+
+* [ResNet50 Checkpoints](https://storage.googleapis.com/cloud-tpu-checkpoints/resnet/resnet50.tar.gz)
+
+* ResNet50 TFHub: [feature vector](https://tfhub.dev/tensorflow/resnet_50/feature_vector/1)
+and [classification](https://tfhub.dev/tensorflow/resnet_50/classification/1)
 
 ### CIFAR-10
 
@@ -43,7 +48,7 @@ location with the `--data_dir` flag, like:
 python resnet_cifar_main.py --data_dir=/path/to/cifar
 ```
 
-### ImageNet
+### ImageNet Training
 
 Download the ImageNet dataset and convert it to TFRecord format.
 The following [script](https://github.com/tensorflow/tpu/blob/master/tools/datasets/imagenet_to_gcs.py)
@@ -134,7 +139,7 @@ python resnet_ctl_imagenet_main.py \
   --use_synthetic_data=false \
   --dtype=fp32 \
   --enable_eager=true \
-  --enable_tensorboard=false \
+  --enable_tensorboard=true \
   --distribution_strategy=tpu \
   --log_steps=50 \
   --single_l2_loss_op=true \
@@ -154,7 +159,7 @@ python resnet_ctl_imagenet_main.py \
   --use_synthetic_data=false \
   --dtype=fp32 \
   --enable_eager=true \
-  --enable_tensorboard=false \
+  --enable_tensorboard=true \
   --distribution_strategy=tpu \
   --log_steps=50 \
   --single_l2_loss_op=true \
